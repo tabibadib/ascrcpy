@@ -1,9 +1,9 @@
 package ernest.ascrcpy.scrcpy
 
 data class ScrcpyConfig(
-    val maxSize: Int = 1920,
-    val videoBitRate: Int = 8_000_000,
-    val maxFps: Int = 60,
+    val maxSize: Int = 1280,
+    val videoBitRate: Int = 4_000_000,
+    val maxFps: Int = 30,
 ) {
     init {
         require(maxSize > 0)
