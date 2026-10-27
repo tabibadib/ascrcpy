@@ -101,7 +101,7 @@ internal fun MainScreen(
 
   if (state.connected && fullscreen) {
     Box(modifier.fillMaxSize().background(Color.Black)) {
-      AspectRatioRemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, Modifier.fillMaxSize())
+      AspectRatioRemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, onKey, Modifier.fillMaxSize())
       FloatingRemote(onKey, { fullscreen = false }, remoteState, Modifier.fillMaxSize().safeDrawingPadding())
     }
   } else {
@@ -708,6 +708,7 @@ private fun AspectRatioRemoteSurface(
   onSurfaceCreated: (Surface) -> Unit,
   onSurfaceDestroyed: (Surface) -> Unit,
   onTouch: (Int, Long, Int, Int, Float) -> Unit,
+  onKey: (Int) -> Unit,
   modifier: Modifier,
 ) {
   Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
@@ -716,14 +717,14 @@ private fun AspectRatioRemoteSurface(
     } else {
       Modifier.fillMaxSize()
     }
-    RemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, surfaceModifier)
+    RemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, onKey, surfaceModifier)
   }
 }
 
 @Composable
 private fun RemoteSurface(videoSize: VideoSize?, onSurfaceCreated: (Surface) -> Unit,
   onSurfaceDestroyed: (Surface) -> Unit,
-  onTouch: (Int, Long, Int, Int, Float) -> Unit, modifier: Modifier) {
+  onTouch: (Int, Long, Int, Int, Float) -> Unit, onKey: (Int) -> Unit, modifier: Modifier) {
   AndroidView(modifier = modifier.background(Color.Black, RoundedCornerShape(12.dp)), factory = { context ->
     SurfaceView(context).apply { holder.addCallback(object : SurfaceHolder.Callback {
       private var attachedSurface: Surface? = null
@@ -738,7 +739,38 @@ private fun RemoteSurface(videoSize: VideoSize?, onSurfaceCreated: (Surface) -> 
       }
     }) }
   }, update = { view ->
+    var downX = 0f
+		var downY = 0f
     view.setOnTouchListener { touched, event ->
+      when (event.actionMasked) {
+    MotionEvent.ACTION_DOWN -> {
+        downX = event.x
+        downY = event.y
+    }
+
+    MotionEvent.ACTION_UP -> {
+        val dx = event.x - downX
+        val dy = event.y - downY
+        val threshold = 80f
+
+        if (abs(dx) > threshold || abs(dy) > threshold) {
+            if (abs(dx) > abs(dy)) {
+                if (dx > 0) {
+                    onKey(KeyEvent.KEYCODE_DPAD_LEFT)
+                } else {
+                    onKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+                }
+            } else {
+                if (dy > 0) {
+                    onKey(KeyEvent.KEYCODE_DPAD_UP)
+                } else {
+                    onKey(KeyEvent.KEYCODE_DPAD_DOWN)
+                }
+            }
+            return@setOnTouchListener true
+        }
+    }
+}
       val remote = videoSize ?: return@setOnTouchListener false
       val indices = if (event.actionMasked == MotionEvent.ACTION_MOVE) 0 until event.pointerCount else listOf(event.actionIndex)
       indices.forEach { i -> mapPoint(event.getX(i), event.getY(i), touched.width, touched.height, remote)?.let {
