@@ -106,7 +106,7 @@ internal fun MainScreen(
     }
   } else {
     NormalScreen(state, videoSize, onHostChange, onPortChange, onConnect, onDisconnect,
-      onProbe, onStartMirroring, onStopMirroring, onSurfaceCreated, onSurfaceDestroyed, onTouch, onDeleteHost, modifier)
+      onProbe, onStartMirroring, onStopMirroring, onSurfaceCreated, onSurfaceDestroyed, onTouch, onKey, onDeleteHost, modifier)
     if (state.connected) {
       FloatingRemote(onKey, { fullscreen = true }, remoteState, Modifier.fillMaxSize().safeDrawingPadding())
     }
@@ -127,6 +127,7 @@ private fun NormalScreen(
   onSurfaceCreated: (Surface) -> Unit,
   onSurfaceDestroyed: (Surface) -> Unit,
   onTouch: (Int, Long, Int, Int, Float) -> Unit,
+  onKey: (Int) -> Unit,
   onDeleteHost: (String) -> Unit,
   modifier: Modifier,
 ) {
@@ -180,7 +181,7 @@ private fun NormalScreen(
               Text(stringResource(R.string.remote_display), style = MaterialTheme.typography.titleLarge)
               if (state.scrcpyState !is ScrcpyState.Idle) OutlinedButton(onStopMirroring) { Text(stringResource(R.string.stop)) }
             }
-            AspectRatioRemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, Modifier.fillMaxWidth().height(420.dp))
+            AspectRatioRemoteSurface(videoSize, onSurfaceCreated, onSurfaceDestroyed, onTouch, onKey, Modifier.fillMaxWidth().height(420.dp))
             Text(scrcpyStatus(state.scrcpyState), color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
         }
@@ -740,42 +741,52 @@ private fun RemoteSurface(videoSize: VideoSize?, onSurfaceCreated: (Surface) -> 
     }) }
   }, update = { view ->
     var downX = 0f
-		var downY = 0f
+    var downY = 0f
+    var swipeHandled = false
+    val swipeThreshold = 80f
+
     view.setOnTouchListener { touched, event ->
       when (event.actionMasked) {
-    MotionEvent.ACTION_DOWN -> {
-        downX = event.x
-        downY = event.y
-    }
-
-    MotionEvent.ACTION_UP -> {
-        val dx = event.x - downX
-        val dy = event.y - downY
-        val threshold = 80f
-
-        if (abs(dx) > threshold || abs(dy) > threshold) {
+        MotionEvent.ACTION_DOWN -> {
+          downX = event.x
+          downY = event.y
+          swipeHandled = false
+        }
+        MotionEvent.ACTION_MOVE -> {
+          val dx = event.x - downX
+          val dy = event.y - downY
+          if (!swipeHandled && (abs(dx) > swipeThreshold || abs(dy) > swipeThreshold)) {
             if (abs(dx) > abs(dy)) {
-                if (dx > 0) {
-                    onKey(KeyEvent.KEYCODE_DPAD_LEFT)
-                } else {
-                    onKey(KeyEvent.KEYCODE_DPAD_RIGHT)
-                }
+              onKey(if (dx > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT)
             } else {
-                if (dy > 0) {
-                    onKey(KeyEvent.KEYCODE_DPAD_UP)
-                } else {
-                    onKey(KeyEvent.KEYCODE_DPAD_DOWN)
-                }
+              onKey(if (dy > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP)
+            }
+            swipeHandled = true
+            return@setOnTouchListener true
+          }
+        }
+        MotionEvent.ACTION_UP -> {
+          if (swipeHandled) return@setOnTouchListener true
+          val dx = event.x - downX
+          val dy = event.y - downY
+          if (abs(dx) > swipeThreshold || abs(dy) > swipeThreshold) {
+            if (abs(dx) > abs(dy)) {
+              onKey(if (dx > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT)
+            } else {
+              onKey(if (dy > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP)
             }
             return@setOnTouchListener true
+          }
         }
-    }
-}
+      }
+
       val remote = videoSize ?: return@setOnTouchListener false
       val indices = if (event.actionMasked == MotionEvent.ACTION_MOVE) 0 until event.pointerCount else listOf(event.actionIndex)
-      indices.forEach { i -> mapPoint(event.getX(i), event.getY(i), touched.width, touched.height, remote)?.let {
-        point -> onTouch(event.actionMasked, event.getPointerId(i).toLong(), point.first, point.second, event.getPressure(i))
-      } }
+      indices.forEach { i ->
+        mapPoint(event.getX(i), event.getY(i), touched.width, touched.height, remote)?.let { point ->
+          onTouch(event.actionMasked, event.getPointerId(i).toLong(), point.first, point.second, event.getPressure(i))
+        }
+      }
       true
     }
   })
